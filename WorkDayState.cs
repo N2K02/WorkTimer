@@ -14,6 +14,7 @@ internal sealed class WorkDayState
     public DateTime? ClockOut { get; set; }
     public bool ClockOutAuto { get; set; }
     public bool ClockOutUnknownIssue { get; set; }
+    public bool UserOffline { get; set; }
     public bool Prompted { get; set; }
     public DateTime? LastSeen { get; set; }
 
@@ -45,4 +46,3 @@ internal sealed class WorkDayState
         File.WriteAllText(FilePath, JsonSerializer.Serialize(this));
     }
 }
-

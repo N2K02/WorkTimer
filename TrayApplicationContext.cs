@@ -35,7 +35,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private DateTime _lastHistoryAttempt = DateTime.MinValue;
     private DateTime _nextReminder = DateTime.MinValue;
     private bool _warnedHistoryLocked;
-    private TimeDialog? _clockOutDialog;
+    private TimeDialog? _openDialog;
     private bool _dialogOpen;
 
     public TrayApplicationContext()
@@ -116,9 +116,11 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
+        DateOnly dialogDate;
         DateTime defaultTime;
         lock (_sync)
         {
+            dialogDate = _state.Date;
             _state.Prompted = true;
             defaultTime = _state.ClockIn ?? DateTime.Now;
         }
@@ -126,25 +128,30 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _dialogOpen = true;
         using var dialog = new TimeDialog(
             "Clock in", "What time are you clocking in today?", defaultTime, DateTime.Today, "Start timer", "Not now");
-        var accepted = dialog.ShowDialog() == DialogResult.OK;
+        _openDialog = dialog;
+        var result = dialog.ShowDialog();
+        _openDialog = null;
         _dialogOpen = false;
 
         lock (_sync)
         {
-            if (accepted)
+            if (_state.Date == dialogDate && result != DialogResult.Abort)
             {
-                _state.ClockIn = dialog.Time;
-                _nextReminder = DateTime.MinValue;
-                if (_state.ClockOut <= _state.ClockIn)
+                if (result == DialogResult.OK)
                 {
-                    _state.ClockOut = null;
-                    _state.ClockOutAuto = false;
-                    _state.ClockOutUnknownIssue = false;
+                    _state.ClockIn = dialog.Time;
+                    _nextReminder = DateTime.MinValue;
+                    if (_state.ClockOut <= _state.ClockIn)
+                    {
+                        _state.ClockOut = null;
+                        _state.ClockOutAuto = false;
+                        _state.ClockOutUnknownIssue = false;
+                    }
                 }
-            }
 
-            _state.Save();
-            RecordHistory(_state);
+                _state.Save();
+                RecordHistory(_state);
+            }
         }
 
         Tick();
@@ -157,6 +164,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             return;
         }
 
+        DateOnly dialogDate;
         DateTime clockIn;
         DateTime defaultTime;
         lock (_sync)
@@ -167,6 +175,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 return;
             }
 
+            dialogDate = _state.Date;
             clockIn = ci;
             defaultTime = _state.ClockOut ?? DateTime.Now;
         }
@@ -177,25 +186,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         _dialogOpen = true;
         using var dialog = new TimeDialog("Time to clock out", message, defaultTime, clockIn, "Clock out");
-        _clockOutDialog = dialog;
+        _openDialog = dialog;
         dialog.EnableLive(clockIn, WorkDay, message);
         var result = dialog.ShowDialog();
-        _clockOutDialog = null;
+        _openDialog = null;
         _dialogOpen = false;
 
         lock (_sync)
         {
-            if (result == DialogResult.OK)
+            if (_state.Date == dialogDate)
             {
-                _state.ClockOut = dialog.Time;
-                _state.ClockOutAuto = false;
-                _state.ClockOutUnknownIssue = false;
-                _state.Save();
-                RecordHistory(_state);
-            }
-            else if (result == DialogResult.Cancel && reminder)
-            {
-                _nextReminder = DateTime.Now + ReminderInterval;
+                if (result == DialogResult.OK)
+                {
+                    _state.ClockOut = dialog.Time;
+                    _state.ClockOutAuto = false;
+                    _state.ClockOutUnknownIssue = false;
+                    _state.Save();
+                    RecordHistory(_state);
+                }
+                else if (result == DialogResult.Cancel && reminder)
+                {
+                    _nextReminder = DateTime.Now + ReminderInterval;
+                }
             }
         }
 
@@ -209,13 +221,14 @@ internal sealed class TrayApplicationContext : ApplicationContext
         lock (_sync)
         {
             var now = DateTime.Now;
-            RolloverIfNeeded(now);
 
             // A long gap between ticks means the PC slept (lid closed): clock out at the last moment we were awake.
             if (_lastTick is { } last && now - last > SleepGap)
             {
                 AutoClockOutIfDue(last);
             }
+
+            RolloverIfNeeded(now);
 
             _lastTick = now;
             _state.LastSeen = now;
@@ -250,27 +263,52 @@ internal sealed class TrayApplicationContext : ApplicationContext
     // Closes a previous day that was never clocked out, using the last time the app saw the PC awake.
     private void RolloverIfNeeded(DateTime now)
     {
-        if (_state.Date == DateOnly.FromDateTime(now))
+        var today = DateOnly.FromDateTime(now);
+        if (_state.Date >= today)
         {
             return;
         }
+
+        CloseOpenDialog();
 
         if (_state.ClockIn is { } clockIn && _state.ClockOut is null)
         {
             // The app never saw the PC leave (crash or power cut), so the day is closed with an error marker.
             // Even then the clock-out is never earlier than the 9 hours.
             var planned = clockIn + WorkDay;
-            _state.ClockOut = _state.LastSeen is { } seen && seen > planned ? seen : planned;
+            var sameDaySeen = _state.LastSeen is { } seen && DateOnly.FromDateTime(seen) == _state.Date && seen > planned
+                ? seen
+                : planned;
+            _state.ClockOut = sameDaySeen;
             _state.ClockOutAuto = true;
             _state.ClockOutUnknownIssue = true;
         }
-
-        if (_state.ClockIn is not null)
+        else if (_state.ClockIn is null && _state.Date.DayOfWeek is not (DayOfWeek.Saturday or DayOfWeek.Sunday))
         {
-            RecordHistory(_state);
+            _state.UserOffline = true;
         }
 
-        _state = WorkDayState.Fresh();
+        if (_state.ClockIn is not null || _state.UserOffline)
+        {
+            QueueHistory(_state);
+        }
+
+        for (var d = _state.Date.AddDays(1); d < today; d = d.AddDays(1))
+        {
+            if (d.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday)
+            {
+                continue;
+            }
+
+            QueueHistory(new WorkDayState { Date = d, UserOffline = true });
+        }
+
+        if (_pendingHistory.Count > 0)
+        {
+            FlushHistory(silent: true);
+        }
+
+        _state = new WorkDayState { Date = today };
         _nextReminder = DateTime.MinValue;
         _state.Save();
     }
@@ -288,30 +326,32 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _state.ClockOutAuto = true;
         _state.Save();
         RecordHistory(_state);
+        CloseOpenDialog();
+        return true;
+    }
 
-        // The dialog belongs to the UI thread, and this can be called from a system-events thread.
+    // The dialog belongs to the UI thread, and this can be called from a system-events thread.
+    private void CloseOpenDialog()
+    {
         try
         {
-            _ui.BeginInvoke(() =>
-            {
-                if (_clockOutDialog is { } dialog)
-                {
-                    dialog.DialogResult = DialogResult.Abort;
-                }
-            });
+            _ui.BeginInvoke(() => _openDialog?.Abort());
         }
         catch (InvalidOperationException)
         {
             // UI is already shutting down.
         }
+    }
 
-        return true;
+    private void QueueHistory(WorkDayState day)
+    {
+        _pendingHistory.RemoveAll(p => p.Date == day.Date);
+        _pendingHistory.Add(day.Clone());
     }
 
     private void RecordHistory(WorkDayState day)
     {
-        _pendingHistory.RemoveAll(p => p.Date == day.Date);
-        _pendingHistory.Add(day.Clone());
+        QueueHistory(day);
         FlushHistory(silent: true);
     }
 

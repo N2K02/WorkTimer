@@ -16,8 +16,15 @@ internal sealed class TimeDialog : Form
 
     private readonly DateTime _earliest;
     private readonly string _title;
+    private bool _aborted;
 
     public DateTime Time { get; private set; }
+
+    public void Abort()
+    {
+        _aborted = true;
+        DialogResult = DialogResult.Abort;
+    }
 
     public TimeDialog(string title, string message, DateTime defaultTime, DateTime earliest, string okText, string? cancelText = null)
     {
@@ -98,7 +105,7 @@ internal sealed class TimeDialog : Form
         if (error is not null)
         {
             MessageBox.Show(this, error, _title, MessageBoxButtons.OK, MessageBoxIcon.Warning);
-            DialogResult = DialogResult.None;
+            DialogResult = _aborted ? DialogResult.Abort : DialogResult.None;
             return;
         }
 

@@ -28,24 +28,39 @@ internal static class ClockInHistory
     // One row per day: writing the same day again replaces its row. Throws IOException while Excel has the file open.
     public static void Upsert(WorkDayState day, TimeSpan workDay)
     {
-        if (day.ClockIn is not { } clockIn)
+        var date = day.Date.ToString("yyyy-MM-dd");
+        string row;
+        if (day.ClockIn is { } clockIn)
+        {
+            var clockOut = day.ClockOut;
+            row = string.Join(',',
+                date,
+                $"{clockIn:HH:mm}",
+                $"{clockIn + workDay:HH:mm}",
+                clockOut is { } o ? $"{o:HH:mm}" : "",
+                clockOut is { } o2 ? FormatWorked(o2 - clockIn) : "",
+                clockOut is null ? "" : day.ClockOutUnknownIssue ? "Error: an unknown issue occurred" : day.ClockOutAuto ? "Auto" : "Manual");
+        }
+        else if (day.UserOffline)
+        {
+            row = $"{date},,,,,User was offline";
+        }
+        else
         {
             return;
         }
 
-        var date = day.Date.ToString("yyyy-MM-dd");
-        var clockOut = day.ClockOut;
-        var row = string.Join(',',
-            date,
-            $"{clockIn:HH:mm}",
-            $"{clockIn + workDay:HH:mm}",
-            clockOut is { } o ? $"{o:HH:mm}" : "",
-            clockOut is { } o2 ? FormatWorked(o2 - clockIn) : "",
-            clockOut is null ? "" : day.ClockOutUnknownIssue ? "Error: an unknown issue occurred" : day.ClockOutAuto ? "Auto" : "Manual");
-
-        var rows = Read()
+        var existing = Read()
             .Where(l => l.Length > 0)
             .Select(Normalize)
+            .ToList();
+
+        if (day.ClockIn is null && existing.Any(r => r.Date == day.Date && !r.Line.StartsWith($"{date},,", StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        var rows = existing
             .Where(r => r.Date != day.Date)
             .Append((Date: day.Date, Line: row))
             .OrderBy(r => r.Date)
@@ -91,5 +106,3 @@ internal static class ClockInHistory
         return lines.Skip(1).ToList();
     }
 }
-
-
