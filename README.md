@@ -38,7 +38,7 @@ Powered by [WidBar](https://apps.microsoft.com/detail/9PKLDNM83TP9), WorkTimer l
 
 To install or share with a colleague:
 
-1. Double-click `WorkTimer-1.0.0.msi` (located in `dist\` or releases).
+1. Double-click the installer (e.g. `dist\WorkTimer-1.0.1.msi` or latest release).
 2. Follow the standard Windows installer wizard. It will install the application, create a Start Menu shortcut, and register the widget automatically.
 3. Open **WidBar** > **Layout** > **Refresh Catalog** and drag **WorkTimer** onto the taskbar.
 4. Launch **WorkTimer** from the Start Menu.
@@ -46,10 +46,20 @@ To install or share with a colleague:
 To build the MSI installer package yourself:
 
 ```powershell
+# Build current version
 powershell -NoProfile -File Setup\Build-Msi.ps1
+
+# Auto-bump patch version (e.g. 1.0.1 -> 1.0.2) and build
+powershell -NoProfile -File Setup\Build-Msi.ps1 -Bump Patch
+
+# Auto-bump minor version (e.g. 1.0.1 -> 1.1.0) and build
+powershell -NoProfile -File Setup\Build-Msi.ps1 -Bump Minor
+
+# Or specify an exact version number
+powershell -NoProfile -File Setup\Build-Msi.ps1 -Version 1.2.0
 ```
 
-The installer will be generated in `dist\WorkTimer-1.0.0.msi`.
+The installer will be generated in `dist\WorkTimer-<version>.msi`.
 
 ---
 

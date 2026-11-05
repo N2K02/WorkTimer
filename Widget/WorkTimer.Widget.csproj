@@ -22,7 +22,7 @@
     <WidBarPluginName>WorkTimer</WidBarPluginName>
     <WidBarPluginDescription>Work timer taskbar widget tracking daily work hours.</WidBarPluginDescription>
     <WidBarPluginCategory>Productivity</WidBarPluginCategory>
-    <WidBarPluginVersion>1.0.0</WidBarPluginVersion>
+    <WidBarPluginVersion>1.0.1</WidBarPluginVersion>
     <WidBarPluginPreviewWidth>172</WidBarPluginPreviewWidth>
     <WidBarPluginConfigurable>false</WidBarPluginConfigurable>
   </PropertyGroup>
