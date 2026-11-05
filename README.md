@@ -30,9 +30,32 @@ Powered by [WidBar](https://apps.microsoft.com/detail/9PKLDNM83TP9), WorkTimer l
 1. **Windows 11** (build 22000 or newer).
 2. **Windows Developer Mode**: Enabled in `Settings > System > For developers > Developer Mode` (required to register local WinUI 3 AppExtension packages).
 3. **[WidBar](https://apps.microsoft.com/detail/9PKLDNM83TP9)**: Install from the Microsoft Store (or GitHub).
-4. **[.NET 10 SDK](https://dotnet.microsoft.com/download)**: Required to build both the tracker and the widget.
+4. **[.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download)**: Required to run the tracker application.
 
-## Building and Installing
+---
+
+## Easy Installation (MSI Package)
+
+To install or share with a colleague:
+
+1. Double-click `WorkTimer-1.0.0.msi` (located in `dist\` or releases).
+2. Follow the standard Windows installer wizard. It will install the application, create a Start Menu shortcut, and register the widget automatically.
+3. Open **WidBar** > **Layout** > **Refresh Catalog** and drag **WorkTimer** onto the taskbar.
+4. Launch **WorkTimer** from the Start Menu.
+
+To build the MSI installer package yourself:
+
+```powershell
+powershell -NoProfile -File Setup\Build-Msi.ps1
+```
+
+The installer will be generated in `dist\WorkTimer-1.0.0.msi`.
+
+---
+
+## Developer Setup (Build from Source)
+
+If building manually without the MSI:
 
 ### 1. Build the Tracker Application
 
@@ -43,8 +66,6 @@ dotnet publish WorkTimer.csproj -c Release
 The compiled standalone executable is placed in `dist\WorkTimer.exe`.
 
 ### 2. Build and Register the Widget
-
-Run the build and install scripts in PowerShell:
 
 ```powershell
 powershell -NoProfile -File Widget\Build.ps1

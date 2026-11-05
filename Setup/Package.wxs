@@ -1,0 +1,68 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package Name="WorkTimer"
+           Manufacturer="N2K02"
+           Version="1.0.0"
+           UpgradeCode="45D3B89E-70F4-44DC-A3B9-17EB3B87920A"
+           Scope="perUserOrMachine">
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+
+    <MediaTemplate CabinetTemplate="wt{0}.cab" EmbedCab="yes" />
+
+    <Icon Id="AppIcon" SourceFile="..\WorkTimer.ico" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+
+    <StandardDirectory Id="ProgramFiles6432Folder">
+      <Directory Id="INSTALLFOLDER" Name="WorkTimer">
+        <Directory Id="WIDGETDIR" Name="Widget" />
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="ApplicationShortcut" Guid="72449E2F-43BE-4780-8772-CA3575971556">
+        <Shortcut Id="AppStartMenuShortcut"
+                  Name="WorkTimer"
+                  Description="Windows 11 taskbar widget and work timer"
+                  Target="[INSTALLFOLDER]WorkTimer.exe"
+                  WorkingDirectory="INSTALLFOLDER"
+                  Icon="AppIcon" />
+        <RegistryValue Root="HKCU" Key="Software\WorkTimer" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <ComponentGroup Id="ProductComponents">
+      <Component Id="MainExecutable" Directory="INSTALLFOLDER" Guid="CE6BFDA2-120C-4A2D-A496-EE6CE6D8A6A4">
+        <File Id="WorkTimerExe" Source="..\dist\WorkTimer.exe" KeyPath="yes" />
+        <File Id="WorkTimerIco" Source="..\WorkTimer.ico" />
+      </Component>
+    </ComponentGroup>
+
+    <ComponentGroup Id="WidgetFiles" Directory="WIDGETDIR">
+      <Files Include="..\Widget\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\**" />
+    </ComponentGroup>
+
+    <WixVariable Id="WixUILicenseRtf" Value="License.rtf" />
+    <ui:WixUI Id="WixUI_Minimal" />
+
+    <CustomAction Id="RegisterWidget"
+                  Directory="WIDGETDIR"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Add-AppxPackage -Register \"[WIDGETDIR]AppxManifest.xml\""'
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <CustomAction Id="UnregisterWidget"
+                  Directory="WIDGETDIR"
+                  ExeCommand='powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -Command "Get-AppxPackage -Name \"N2K02.WorkTimer.Widget\" | Remove-AppxPackage"'
+                  Execute="deferred"
+                  Impersonate="yes"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RegisterWidget" After="InstallFiles" Condition="NOT Installed" />
+      <Custom Action="UnregisterWidget" Before="RemoveFiles" Condition="Installed AND (REMOVE=&quot;ALL&quot;)" />
+    </InstallExecuteSequence>
+
+  </Package>
+</Wix>
