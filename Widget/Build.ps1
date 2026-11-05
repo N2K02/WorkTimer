@@ -1,27 +1,10 @@
 param([ValidateSet('Debug', 'Release')][string]$Configuration = 'Release')
 $ErrorActionPreference = 'Stop'
 
-Add-Type -AssemblyName System.Drawing
 $assets = Join-Path $PSScriptRoot 'Assets'
-New-Item -ItemType Directory -Path $assets -Force | Out-Null
-$icon = [System.Drawing.Icon]::new((Join-Path $PSScriptRoot '..\WorkTimer.ico'), 32, 32)
-$source = $icon.ToBitmap()
-try {
-    foreach ($entry in @(@('StoreLogo.png', 50), @('Logo150.png', 150), @('Logo44.png', 44))) {
-        $bitmap = [System.Drawing.Bitmap]::new([int]$entry[1], [int]$entry[1])
-        $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-        try {
-            $graphics.Clear([System.Drawing.Color]::Transparent)
-            $graphics.DrawImage($source, [System.Drawing.Rectangle]::new(0, 0, $bitmap.Width, $bitmap.Height))
-            $bitmap.Save((Join-Path $assets $entry[0]), [System.Drawing.Imaging.ImageFormat]::Png)
-        } finally {
-            $graphics.Dispose()
-            $bitmap.Dispose()
-        }
-    }
-} finally {
-    $source.Dispose()
-    $icon.Dispose()
+$generator = Join-Path $PSScriptRoot '..\Setup\Generate-Icons.ps1'
+if (-not (Test-Path (Join-Path $assets 'StoreLogo.png')) -and (Test-Path $generator)) {
+    & $generator
 }
 
 dotnet restore (Join-Path $PSScriptRoot 'WorkTimer.Widget.csproj') --source https://api.nuget.org/v3/index.json -p:Platform=x64
