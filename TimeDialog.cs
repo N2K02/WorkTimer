@@ -1,4 +1,4 @@
-namespace ClockInTray;
+namespace WorkTimer;
 
 internal sealed class TimeDialog : Form
 {

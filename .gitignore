@@ -1,6 +1,8 @@
 bin/
 obj/
 dist/
+Widget/AppPackages/
 *.user
 
 ClockInHistory.csv
+WorkTimerHistory.csv

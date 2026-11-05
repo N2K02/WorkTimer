@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>ClockInTray.ico</ApplicationIcon>
+    <ApplicationIcon>WorkTimer.ico</ApplicationIcon>
   </PropertyGroup>
 
   <!-- dotnet publish -c Release: one exe in dist\ (needs the .NET 10 Desktop Runtime). Builds stay in bin\Release\net10.0-windows. -->
@@ -22,11 +22,16 @@
   <PropertyGroup>
     <Company>N2K02</Company>
     <Authors>N2K02</Authors>
-    <Product>ClockInTray</Product>
-    <AssemblyTitle>ClockInTray</AssemblyTitle>
-    <Description>Tray clock-in tracker showing the time left in the work day.</Description>
+    <Product>WorkTimer</Product>
+    <AssemblyTitle>WorkTimer</AssemblyTitle>
+    <Description>Taskbar widget tracker showing the time left in the work day.</Description>
     <Copyright>Copyright © N2K02 2026</Copyright>
     <Version>1.0.0</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="tests\**\*.cs" />
+    <Compile Remove="Widget\**\*.cs" />
+  </ItemGroup>
 
 </Project>

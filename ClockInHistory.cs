@@ -1,28 +1,46 @@
 using System.Diagnostics;
 using System.Text;
 
-namespace ClockInTray;
+namespace WorkTimer;
 
 internal static class ClockInHistory
 {
     private const string Header = "Date,Clock in,Planned clock out,Clock out,Worked,Clock-out type";
 
-    private static readonly string FilePath = Path.Combine(ResolveDirectory(), "ClockInHistory.csv");
+    private static readonly string FilePath = ResolveFilePath();
 
     public static bool Exists => File.Exists(FilePath);
+
+    private static string ResolveFilePath()
+    {
+        var dir = ResolveDirectory();
+        var modern = Path.Combine(dir, "WorkTimerHistory.csv");
+        var legacy = Path.Combine(dir, "ClockInHistory.csv");
+        if (!File.Exists(modern) && File.Exists(legacy))
+        {
+            try { File.Move(legacy, modern); } catch { return legacy; }
+        }
+        return modern;
+    }
 
     // The history lives next to the project; falls back to app data if the project folder is not found.
     private static string ResolveDirectory()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
-            if (File.Exists(Path.Combine(dir.FullName, "ClockInTray.csproj")))
+            if (File.Exists(Path.Combine(dir.FullName, "WorkTimer.csproj")) || File.Exists(Path.Combine(dir.FullName, "ClockInTray.csproj")))
             {
                 return dir.FullName;
             }
         }
 
-        return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClockInTray");
+        var appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WorkTimer");
+        var legacyAppData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClockInTray");
+        if (!Directory.Exists(appData) && Directory.Exists(legacyAppData))
+        {
+            try { Directory.Move(legacyAppData, appData); } catch { return legacyAppData; }
+        }
+        return appData;
     }
 
     // One row per day: writing the same day again replaces its row. Throws IOException while Excel has the file open.

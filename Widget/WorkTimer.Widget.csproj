@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22621.0</TargetPlatformMinVersion>
+    <UseWinUI>true</UseWinUI>
+    <WinUISDKReferences>false</WinUISDKReferences>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <GenerateAppxPackageOnBuild>true</GenerateAppxPackageOnBuild>
+    <AppxBundle>Never</AppxBundle>
+    <PlatformTarget>x64</PlatformTarget>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>false</SelfContained>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <WidBarPluginId>com.n2k02.worktimer</WidBarPluginId>
+    <WidBarPluginName>WorkTimer</WidBarPluginName>
+    <WidBarPluginDescription>Work timer taskbar widget tracking daily work hours.</WidBarPluginDescription>
+    <WidBarPluginCategory>Productivity</WidBarPluginCategory>
+    <WidBarPluginVersion>1.0.0</WidBarPluginVersion>
+    <WidBarPluginPreviewWidth>172</WidBarPluginPreviewWidth>
+    <WidBarPluginConfigurable>false</WidBarPluginConfigurable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2957" />
+    <PackageReference Include="WidBar.SDK" Version="2.3.0" />
+    <Compile Include="..\WidgetStatus.cs" Link="WidgetStatus.cs" />
+    <Compile Include="..\TrackerCommands.cs" Link="TrackerCommands.cs" />
+    <Content Include="Assets\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="obj\widbar\plugin.json" Link="Public\plugin.json" CopyToOutputDirectory="PreserveNewest" />
+    <Manifest Include="app.manifest" />
+  </ItemGroup>
+</Project>

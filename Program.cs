@@ -1,4 +1,4 @@
-namespace ClockInTray;
+namespace WorkTimer;
 
 internal static class Program
 {
@@ -6,7 +6,7 @@ internal static class Program
     private static void Main()
     {
         bool restart;
-        using (var mutex = new Mutex(true, @"Local\ClockInTray.SingleInstance", out var isFirst))
+        using (var mutex = new Mutex(true, @"Local\WorkTimer.SingleInstance", out var isFirst))
         {
             if (!isFirst)
             {

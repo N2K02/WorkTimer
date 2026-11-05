@@ -1,6 +1,6 @@
 using Microsoft.Win32;
 
-namespace ClockInTray;
+namespace WorkTimer;
 
 internal sealed class TrayApplicationContext : ApplicationContext
 {
@@ -13,28 +13,28 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static readonly TimeSpan HistoryRetryInterval = TimeSpan.FromSeconds(10);
 
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string RunValueName = "ClockInTray";
+    private const string RunValueName = "WorkTimer";
+    private const string HistoryLockedNotice = "Close WorkTimerHistory.csv in Excel; it will be saved automatically.";
 
     private readonly object _sync = new();
     private readonly Control _ui = new();
-    private readonly NotifyIcon _tray;
     private readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
-    private readonly ToolStripMenuItem _statusItem = new("Not clocked in") { Enabled = false };
-    private readonly ToolStripMenuItem _autoStartItem = new("Start with Windows") { CheckOnClick = true };
     private readonly List<WorkDayState> _pendingHistory = [];
-    private readonly ToolStripMenuItem _setItem = new("Set clock-in time...");
-    private readonly ToolStripMenuItem _clockOutItem = new("Clock out...");
+    private readonly WidgetStatusPublisher _widgetPublisher = new();
+    private readonly TrackerCommandServer _commands;
+    private bool _autoStartEnabled;
+    private string? _notice;
+    private WidgetStatus? _currentStatus;
+    private bool _canClockIn;
+    private bool _canClockOut;
 
     public bool RestartRequested { get; private set; }
 
     private WorkDayState _state;
-    private string? _iconText;
-    private Color _iconColor;
     private DateTime? _lastTick;
     private DateTime _lastSaved = DateTime.MinValue;
     private DateTime _lastHistoryAttempt = DateTime.MinValue;
     private DateTime _nextReminder = DateTime.MinValue;
-    private bool _warnedHistoryLocked;
     private TimeDialog? _openDialog;
     private bool _dialogOpen;
 
@@ -44,26 +44,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _state = WorkDayState.Load();
         _ = _ui.Handle;
 
-        _setItem.Click += (_, _) => PromptClockIn();
-        _clockOutItem.Click += (_, _) => PromptClockOut(reminder: false);
-        var historyItem = new ToolStripMenuItem("Open history in Excel", null, (_, _) => OpenHistory());
-        var exitItem = new ToolStripMenuItem("Exit", null, (_, _) => ExitThread());
-        var restartItem = new ToolStripMenuItem("Restart", null, (_, _) =>
-        {
-            RestartRequested = true;
-            ExitThread();
-        });
-
-        _autoStartItem.Checked = IsAutoStartEnabled();
-        _autoStartItem.CheckedChanged += (_, _) => SetAutoStart(_autoStartItem.Checked);
-
-        var menu = new ContextMenuStrip();
-        menu.Items.AddRange([
-            _statusItem, new ToolStripSeparator(), _setItem, _clockOutItem, historyItem, _autoStartItem,
-            new ToolStripSeparator(), restartItem, exitItem]);
-
-        _tray = new NotifyIcon { ContextMenuStrip = menu, Visible = true };
-        _tray.DoubleClick += (_, _) => ShowStatus();
+        _autoStartEnabled = IsAutoStartEnabled();
+        if (Environment.ProcessPath is { } path) TrackerCommands.RegisterExecutable(path);
+        _commands = new TrackerCommandServer(QueueCommand);
 
         SystemEvents.PowerModeChanged += OnPowerModeChanged;
         SystemEvents.SessionSwitch += OnSessionSwitch;
@@ -74,7 +57,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         if (firstRun)
         {
-            _autoStartItem.Checked = true;
+            SetAutoStart(true);
+            _autoStartEnabled = true;
         }
 
         // Defer so the message loop is running before showing the dialog.
@@ -98,8 +82,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             {
                 RecordHistory(_state);
             }
+            UpdateDisplay(DateTime.Now);
         }
-
         Tick();
     }
 
@@ -108,6 +92,111 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
     private static bool IsWeekend(DateTime now) =>
         now.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday;
+
+    private bool CanClockIn(DateTime now) => _state.ClockIn is not null || !IsWeekend(now);
+    private bool CanClockOut => _state.ClockIn is not null;
+
+    private void QueueCommand(TrackerCommand command)
+    {
+        if (_ui.IsDisposed) return;
+        try { _ui.BeginInvoke(() => ExecuteCommand(command)); }
+        catch (InvalidOperationException) { }
+    }
+
+    private void ExecuteCommand(TrackerCommand command)
+    {
+        if (_ui.IsDisposed)
+        {
+            return;
+        }
+
+        _notice = null;
+        try
+        {
+            lock (_sync) RolloverIfNeeded(DateTime.Now);
+            switch (command)
+            {
+                case TrackerCommand.ClockIn:
+                    if (CanClockIn(DateTime.Now))
+                    {
+                        var editFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WorkTimer", "edit-clockin.txt");
+                        if (!File.Exists(editFile))
+                        {
+                            var legacyEditFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClockInTray", "edit-clockin.txt");
+                            if (File.Exists(legacyEditFile)) editFile = legacyEditFile;
+                        }
+
+                        var clockInTime = DateTime.Now;
+                        if (File.Exists(editFile))
+                        {
+                            try
+                            {
+                                var text = File.ReadAllText(editFile).Trim();
+                                if (TimeSpan.TryParse(text, out var ts))
+                                {
+                                    clockInTime = DateTime.Today.Add(ts);
+                                }
+                                File.Delete(editFile);
+                            }
+                            catch (Exception) { }
+                        }
+
+                        lock (_sync)
+                        {
+                            _state.ClockIn = clockInTime;
+                            _state.Prompted = true;
+                            _nextReminder = DateTime.MinValue;
+                            if (_state.ClockOut <= _state.ClockIn)
+                            {
+                                _state.ClockOut = null;
+                                _state.ClockOutAuto = false;
+                                _state.ClockOutUnknownIssue = false;
+                            }
+                            _state.Save();
+                            RecordHistory(_state);
+                        }
+                        Tick();
+                    }
+                    break;
+                case TrackerCommand.ClockOut:
+                    if (CanClockOut)
+                    {
+                        lock (_sync)
+                        {
+                            _state.ClockOut = DateTime.Now;
+                            _state.ClockOutAuto = false;
+                            _state.ClockOutUnknownIssue = false;
+                            _state.Save();
+                            RecordHistory(_state);
+                        }
+                        Tick();
+                    }
+                    break;
+                case TrackerCommand.OpenHistory:
+                    OpenHistory();
+                    break;
+                case TrackerCommand.EnableAutoStart:
+                case TrackerCommand.DisableAutoStart:
+                    var enabled = command == TrackerCommand.EnableAutoStart;
+                    SetAutoStart(enabled);
+                    _autoStartEnabled = enabled;
+                    break;
+                case TrackerCommand.Restart:
+                    RestartRequested = true;
+                    ExitThread();
+                    return;
+                case TrackerCommand.Exit:
+                    ExitThread();
+                    return;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
+        {
+            _notice = ex.Message;
+        }
+
+        lock (_sync) UpdateDisplay(DateTime.Now);
+    }
 
     private void PromptClockIn()
     {
@@ -129,6 +218,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         using var dialog = new TimeDialog(
             "Clock in", "What time are you clocking in today?", defaultTime, DateTime.Today, "Start timer", "Not now");
         _openDialog = dialog;
+        UpdateDisplay(DateTime.Now);
         var result = dialog.ShowDialog();
         _openDialog = null;
         _dialogOpen = false;
@@ -171,7 +261,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             if (_state.ClockIn is not { } ci)
             {
-                _tray.ShowBalloonTip(5000, "Clock out", "You haven't clocked in today.", ToolTipIcon.Info);
+                _notice = "You haven't clocked in today.";
                 return;
             }
 
@@ -188,6 +278,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         using var dialog = new TimeDialog("Time to clock out", message, defaultTime, clockIn, "Clock out");
         _openDialog = dialog;
         dialog.EnableLive(clockIn, WorkDay, message);
+        UpdateDisplay(DateTime.Now);
         var result = dialog.ShowDialog();
         _openDialog = null;
         _dialogOpen = false;
@@ -244,10 +335,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             UpdateDisplay(now);
-            promptClockIn = _state.ClockIn is null && !_state.Prompted && !IsWeekend(now)
-                && IsInPromptWindow(now) && !_dialogOpen;
-            promptClockOut = _state.ClockIn is { } ci && _state.ClockOut is null
-                && now - ci >= WorkDay && now >= _nextReminder && !_dialogOpen;
+            promptClockIn = false;
+
+            promptClockOut = false;
+
         }
 
         if (promptClockIn)
@@ -333,9 +424,21 @@ internal sealed class TrayApplicationContext : ApplicationContext
     // The dialog belongs to the UI thread, and this can be called from a system-events thread.
     private void CloseOpenDialog()
     {
+        var dialog = _openDialog;
+        if (dialog is null)
+        {
+            return;
+        }
+
         try
         {
-            _ui.BeginInvoke(() => _openDialog?.Abort());
+            _ui.BeginInvoke(() =>
+            {
+                if (!dialog.IsDisposed)
+                {
+                    dialog.Abort();
+                }
+            });
         }
         catch (InvalidOperationException)
         {
@@ -367,34 +470,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
             }
 
             _pendingHistory.Clear();
-            _warnedHistoryLocked = false;
+            if (_notice == HistoryLockedNotice) _notice = null;
         }
         catch (IOException)
         {
-            if (!silent && !_warnedHistoryLocked)
-            {
-                _warnedHistoryLocked = true;
-                _tray.ShowBalloonTip(
-                    5000, "History not saved yet", "Close ClockInHistory.csv in Excel; it will be saved automatically.", ToolTipIcon.Warning);
-            }
+            if (!silent) _notice = HistoryLockedNotice;
         }
     }
 
     private void UpdateDisplay(DateTime now)
     {
         var weekendOff = _state.ClockIn is null && IsWeekend(now);
-        _setItem.Enabled = !weekendOff;
-        _clockOutItem.Enabled = !weekendOff;
+        _canClockIn = !_dialogOpen && CanClockIn(now);
+        _canClockOut = !_dialogOpen && CanClockOut;
 
         if (weekendOff)
         {
-            SetDisplay("WE", Color.Gray, "Weekend: the clock is off", "Clock-in tracker: weekend, clock is off");
+            SetDisplay("WE", Color.Gray, "Weekend: the clock is off", "WorkTimer: weekend, clock is off");
             return;
         }
 
         if (_state.ClockIn is not { } clockIn)
         {
-            SetDisplay("--", Color.Gray, "Not clocked in", "Clock-in tracker: not clocked in");
+            SetDisplay("--", Color.Gray, "Not clocked in", "WorkTimer: not clocked in");
             return;
         }
 
@@ -403,7 +501,8 @@ internal sealed class TrayApplicationContext : ApplicationContext
             var worked = clockOut - clockIn;
             var how = _state.ClockOutUnknownIssue ? "unknown issue" : _state.ClockOutAuto ? "auto" : "manual";
             var summary = $"Clocked out at {clockOut:HH:mm} ({how})\nWorked {FormatDuration(worked)} (in at {clockIn:HH:mm})";
-            SetDisplay("OUT", Color.SteelBlue, summary.Replace("\n", " | "), summary);
+            SetDisplay("OUT", Color.SteelBlue, summary.Replace("\n", " | "), summary,
+                $"{clockIn:HH:mm} - {clockOut:HH:mm} (clocked out)");
             return;
         }
 
@@ -421,7 +520,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             remaining = TimeSpan.Zero;
         }
 
-        // Round up to the minute so the icon reads 0:00 exactly when the 9 hours are reached.
+        // Round up to the minute so the countdown reaches 0:00 exactly after nine hours.
         var iconRemaining = TimeSpan.FromMinutes(Math.Ceiling(remaining.TotalMinutes));
         var iconText = $"{(int)iconRemaining.TotalHours}:{iconRemaining.Minutes:00}";
         if (done)
@@ -434,25 +533,29 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var details = done
             ? $"Overtime {FormatDuration(overtime)}\nWorked {FormatDuration(elapsed)} (in at {clockIn:HH:mm})"
             : $"Remaining {FormatDuration(remaining)}\nWorked {FormatDuration(elapsed)} (in at {clockIn:HH:mm})\nClock out at {clockIn + WorkDay:HH:mm}";
-        SetDisplay(iconText, color, details.Replace("\n", " | "), details);
+        SetDisplay(iconText, color, details.Replace("\n", " | "), details,
+            $"{clockIn:HH:mm} - {clockIn + WorkDay:HH:mm} ({iconText} {(done ? "overtime" : "left")})");
     }
 
-    private void SetDisplay(string iconText, Color color, string menuText, string tooltip)
+    private void SetDisplay(string iconText, Color color, string menuText, string tooltip, string? widgetTitle = null)
     {
-        _statusItem.Text = menuText;
-        // NotifyIcon.Text is limited to 127 characters.
-        _tray.Text = tooltip.Length > 127 ? tooltip[..127] : tooltip;
-
-        if (iconText == _iconText && color == _iconColor)
+        var title = widgetTitle ?? $"WorkTimer - {menuText}";
+        var times = _state.ClockIn is { } ci ? $"{ci:HH:mm} - {_state.ClockOut ?? ci + WorkDay:HH:mm}" : (IsWeekend(DateTime.Now) ? "Weekend" : "ClockIn Required");
+        var remaining = iconText switch
         {
-            return;
-        }
-
-        _iconText = iconText;
-        _iconColor = color;
-        var old = _tray.Icon;
-        _tray.Icon = TrayIconRenderer.Render(iconText, color);
-        old?.Dispose();
+            "--" => "Not clocked in",
+            "WE" => "Weekend",
+            "OUT" => "Clocked out",
+            _ => $"{iconText} {(color == Color.Firebrick ? "overtime" : "left")}"
+        };
+        _currentStatus = new WidgetStatus(title, times, remaining, tooltip, DateTime.UtcNow)
+        {
+            CanClockIn = _canClockIn,
+            CanClockOut = _canClockOut,
+            AutoStart = _autoStartEnabled,
+            Notice = _notice
+        };
+        _widgetPublisher?.Publish(_currentStatus, WidgetStatus.FilePath);
     }
 
     private void OnPowerModeChanged(object? sender, PowerModeChangedEventArgs e)
@@ -482,9 +585,6 @@ internal sealed class TrayApplicationContext : ApplicationContext
         }
     }
 
-    private void ShowStatus() =>
-        _tray.ShowBalloonTip(5000, "Clock-in tracker", _statusItem.Text ?? string.Empty, ToolTipIcon.Info);
-
     private void OpenHistory()
     {
         lock (_sync)
@@ -494,7 +594,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
 
         if (!ClockInHistory.Exists)
         {
-            _tray.ShowBalloonTip(5000, "Clock-in history", "No history yet.", ToolTipIcon.Info);
+            _notice = "No history yet.";
             return;
         }
 
@@ -506,7 +606,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private static bool IsAutoStartEnabled()
     {
         using var key = Registry.CurrentUser.OpenSubKey(RunKeyPath);
-        return key?.GetValue(RunValueName) is not null;
+        return key?.GetValue(RunValueName) is not null || key?.GetValue("ClockInTray") is not null;
     }
 
     private static void SetAutoStart(bool enabled)
@@ -515,10 +615,12 @@ internal sealed class TrayApplicationContext : ApplicationContext
         if (enabled && Environment.ProcessPath is { } exe)
         {
             key.SetValue(RunValueName, $"\"{exe}\"");
+            key.DeleteValue("ClockInTray", throwOnMissingValue: false);
         }
         else
         {
             key.DeleteValue(RunValueName, throwOnMissingValue: false);
+            key.DeleteValue("ClockInTray", throwOnMissingValue: false);
         }
     }
 
@@ -528,8 +630,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         SystemEvents.SessionSwitch -= OnSessionSwitch;
         SystemEvents.SessionEnding -= OnSessionEnding;
         _timer.Stop();
-        _tray.Visible = false;
-        _tray.Dispose();
+        _commands.Dispose();
+        if (_currentStatus is not null)
+            _widgetPublisher.Publish(_currentStatus with
+            { IsAvailable = false, CanClockIn = false, CanClockOut = false, Remaining = "Tracker stopped", UpdatedUtc = DateTime.UtcNow }, WidgetStatus.FilePath);
         base.ExitThreadCore();
     }
 }

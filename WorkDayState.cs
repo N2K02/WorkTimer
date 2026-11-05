@@ -1,11 +1,28 @@
 using System.Text.Json;
 
-namespace ClockInTray;
+namespace WorkTimer;
 
 internal sealed class WorkDayState
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClockInTray", "state.json");
+    private static readonly string FilePath = ResolveFilePath();
+
+    private static string ResolveFilePath()
+    {
+        var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WorkTimer");
+        var legacyDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ClockInTray");
+        var modern = Path.Combine(dir, "state.json");
+        var legacy = Path.Combine(legacyDir, "state.json");
+        if (!File.Exists(modern) && File.Exists(legacy))
+        {
+            try
+            {
+                Directory.CreateDirectory(dir);
+                File.Copy(legacy, modern, overwrite: true);
+            }
+            catch { return legacy; }
+        }
+        return modern;
+    }
 
     public static bool Exists => File.Exists(FilePath);
 
