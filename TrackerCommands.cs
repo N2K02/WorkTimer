@@ -7,7 +7,7 @@ namespace WorkTimer;
 
 internal enum TrackerCommand : byte
 {
-    ClockIn = 1, ClockOut, OpenHistory, EnableAutoStart, DisableAutoStart, Restart, Exit
+    ClockIn = 1, ClockOut, OpenHistory, EnableAutoStart, DisableAutoStart, Restart, Exit, ShowSetup
 }
 
 internal static class TrackerCommands

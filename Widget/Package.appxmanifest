@@ -13,7 +13,8 @@
   <Applications>
     <Application Id="Widget" Executable="$targetnametoken$.exe" EntryPoint="$targetentrypoint$">
       <uap:VisualElements DisplayName="WorkTimer Widget" Description="Work timer widget tracking work hours on the taskbar."
-                          BackgroundColor="transparent" Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png" />
+                          BackgroundColor="transparent" Square150x150Logo="Assets\Logo150.png" Square44x44Logo="Assets\Logo44.png"
+                          AppListEntry="none" />
       <Extensions>
         <uap3:Extension Category="windows.appExtension">
           <uap3:AppExtension Name="com.widbar.widget" Id="worktimer" PublicFolder="Public" DisplayName="WorkTimer"

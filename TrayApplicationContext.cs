@@ -37,8 +37,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private DateTime _nextReminder = DateTime.MinValue;
     private TimeDialog? _openDialog;
     private bool _dialogOpen;
+    private SetupWindow? _setupWindow;
 
-    public TrayApplicationContext()
+    public TrayApplicationContext(bool showSetup = false)
     {
         var firstRun = !WorkDayState.Exists;
         _state = WorkDayState.Load();
@@ -59,6 +60,18 @@ internal sealed class TrayApplicationContext : ApplicationContext
         {
             SetAutoStart(true);
             _autoStartEnabled = true;
+        }
+
+        if (showSetup)
+        {
+            var showTimer = new System.Windows.Forms.Timer { Interval = 200 };
+            showTimer.Tick += (_, _) =>
+            {
+                showTimer.Stop();
+                showTimer.Dispose();
+                ShowSetupWindow();
+            };
+            showTimer.Start();
         }
 
         // Defer so the message loop is running before showing the dialog.
@@ -188,6 +201,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
                 case TrackerCommand.Exit:
                     ExitThread();
                     return;
+                case TrackerCommand.ShowSetup:
+                    ShowSetupWindow();
+                    break;
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.ComponentModel.Win32Exception)
@@ -609,12 +625,31 @@ internal sealed class TrayApplicationContext : ApplicationContext
         return key?.GetValue(RunValueName) is not null || key?.GetValue("ClockInTray") is not null;
     }
 
+    public void ShowSetupWindow()
+    {
+        if (_ui.IsDisposed) return;
+        try
+        {
+            _ui.BeginInvoke(() =>
+            {
+                if (_setupWindow is null || _setupWindow.IsDisposed)
+                {
+                    _setupWindow = new SetupWindow();
+                }
+                _setupWindow.Show();
+                _setupWindow.BringToFront();
+                _setupWindow.Activate();
+            });
+        }
+        catch (InvalidOperationException) { }
+    }
+
     private static void SetAutoStart(bool enabled)
     {
         using var key = Registry.CurrentUser.CreateSubKey(RunKeyPath);
         if (enabled && Environment.ProcessPath is { } exe)
         {
-            key.SetValue(RunValueName, $"\"{exe}\"");
+            key.SetValue(RunValueName, $"\"{exe}\" --silent");
             key.DeleteValue("ClockInTray", throwOnMissingValue: false);
         }
         else

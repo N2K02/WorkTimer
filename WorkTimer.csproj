@@ -9,12 +9,13 @@
     <ApplicationIcon>WorkTimer.ico</ApplicationIcon>
   </PropertyGroup>
 
-  <!-- dotnet publish -c Release: one exe in dist\ (needs the .NET 10 Desktop Runtime). Builds stay in bin\Release\net10.0-windows. -->
+  <!-- dotnet publish -c Release: one exe in dist\. Self-contained when specified on publish. -->
   <PropertyGroup>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>
     <SelfContained>false</SelfContained>
     <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishDir>$(MSBuildProjectDirectory)\dist\</PublishDir>
   </PropertyGroup>
 

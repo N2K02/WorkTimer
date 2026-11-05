@@ -6,8 +6,8 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Resolve-Path (Join-Path $PSScriptRoot '..')
 
-Write-Host "Building WorkTimer Tracker ($Configuration, v$Version)..." -ForegroundColor Cyan
-dotnet publish (Join-Path $repoRoot 'WorkTimer.csproj') -c $Configuration -p:Version=$Version
+Write-Host "Building WorkTimer Tracker ($Configuration, v$Version, Self-Contained)..." -ForegroundColor Cyan
+dotnet publish (Join-Path $repoRoot 'WorkTimer.csproj') -c $Configuration -r win-x64 --self-contained true -p:Version=$Version
 
 Write-Host "Building WorkTimer Widget ($Configuration, v$Version)..." -ForegroundColor Cyan
 & (Join-Path $repoRoot 'Widget\Build.ps1') -Configuration $Configuration -Version $Version
