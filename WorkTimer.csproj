@@ -27,7 +27,7 @@
     <AssemblyTitle>WorkTimer</AssemblyTitle>
     <Description>Taskbar widget tracker showing the time left in the work day.</Description>
     <Copyright>Copyright © N2K02 2026</Copyright>
-    <Version>1.0.1</Version>
+    <Version>1.0.2</Version>
   </PropertyGroup>
 
   <ItemGroup>

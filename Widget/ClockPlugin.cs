@@ -91,6 +91,9 @@ public sealed class ClockPlugin : WidgetPluginBase, IWidgetFlyoutLifecycle
     {
         if (DateTime.UtcNow - _lastAutoStartAttempt < TimeSpan.FromSeconds(10)) return;
 
+        var status = WidgetStatus.Read(WidgetStatus.FilePath, DateTime.UtcNow);
+        if (status.IsAvailable) return;
+
         var active = GetActiveDayFromState();
         if (active is { ClockOut: null })
         {

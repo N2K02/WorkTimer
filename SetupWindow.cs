@@ -236,15 +236,18 @@ internal sealed class SetupWindow : Form
         // 2. WidBar Host
         if (widBar)
         {
-            _lblWidBarStatus.Text = "✓ Installed";
+            var isRunning = Process.GetProcessesByName("WidBar").Length > 0;
+            _lblWidBarStatus.Text = isRunning ? "✓ Active on Taskbar" : "✓ Installed";
             _lblWidBarStatus.ForeColor = Color.FromArgb(52, 211, 153);
-            _btnWidBar.Visible = false;
+            _btnWidBar.Visible = !isRunning;
+            _btnWidBar.Text = "Start";
         }
         else
         {
             _lblWidBarStatus.Text = "⚠️ Not installed";
             _lblWidBarStatus.ForeColor = Color.FromArgb(251, 146, 60);
             _btnWidBar.Visible = true;
+            _btnWidBar.Text = "Install (Store)";
         }
 
         // 3. Widget Extension
@@ -269,17 +272,22 @@ internal sealed class SetupWindow : Form
 
         // Top Button State
         var allReady = devMode && widBar && widget;
+        var widBarRunning = Process.GetProcessesByName("WidBar").Length > 0;
         if (allReady)
         {
             _btnOpenWidBar.Enabled = true;
-            _btnOpenWidBar.Text = "✓ Open WidBar Taskbar Host";
-            _btnOpenWidBar.BackColor = Color.FromArgb(16, 185, 129); // Modern Emerald Green
+            _btnOpenWidBar.Text = widBarRunning
+                ? "✓ WidBar Active on Taskbar (Click for Guide)"
+                : "▶ Start WidBar Taskbar Host";
+            _btnOpenWidBar.BackColor = widBarRunning
+                ? Color.FromArgb(16, 185, 129)
+                : Color.FromArgb(14, 165, 233);
             _btnOpenWidBar.ForeColor = Color.White;
         }
         else
         {
             _btnOpenWidBar.Enabled = false;
-            _btnOpenWidBar.Text = "Open WidBar (complete requirements below)";
+            _btnOpenWidBar.Text = "Complete checklist below to activate";
             _btnOpenWidBar.BackColor = Color.FromArgb(50, 50, 50);
             _btnOpenWidBar.ForeColor = Color.FromArgb(140, 140, 140);
         }
@@ -334,10 +342,26 @@ internal sealed class SetupWindow : Form
     {
         try
         {
-            Process.Start(new ProcessStartInfo("explorer.exe", @"shell:AppsFolder\30113AndreaDelBello.WidBar-WidgetTaskbarsystem_2mj5svk4jk01m!App")
+            var isRunning = Process.GetProcessesByName("WidBar").Length > 0;
+            if (!isRunning)
             {
-                UseShellExecute = true
-            });
+                Process.Start(new ProcessStartInfo("explorer.exe", @"shell:AppsFolder\30113AndreaDelBello.WidBar-WidgetTaskbarsystem_2mj5svk4jk01m!App")
+                {
+                    UseShellExecute = true
+                });
+            }
+
+            MessageBox.Show(
+                "WidBar runs directly on your Windows 11 taskbar next to your system clock!\n\n" +
+                "To add WorkTimer to your taskbar:\n" +
+                "1. Look at the bottom-right of your screen next to your clock.\n" +
+                "2. Right-click the WidBar widget bar (or right-click WidBar in your system tray ^ menu).\n" +
+                "3. Select 'Layout'.\n" +
+                "4. Drag 'WorkTimer' onto your taskbar widget bar!\n\n" +
+                "WorkTimer will then display your hours live on your taskbar.",
+                "WidBar Taskbar Host",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Information);
         }
         catch
         {

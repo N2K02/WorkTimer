@@ -32,7 +32,7 @@ internal static class TrackerCommands
         using var key = Registry.CurrentUser.OpenSubKey(SettingsKey) ?? Registry.CurrentUser.OpenSubKey(LegacySettingsKey);
         if (key?.GetValue("ExecutablePath") is not string path || !IsLocalTrackerPath(path) || !File.Exists(path))
             throw new IOException("Start WorkTimer once from its installed location to reconnect the widget.");
-        Process.Start(new ProcessStartInfo(path) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(path)! });
+        Process.Start(new ProcessStartInfo(path, "--silent") { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(path)! });
     }
 
     public static string PipeName
